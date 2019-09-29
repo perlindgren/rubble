@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["BbqLogger","A `fmt::Write` sink that writes to a `BBQueue`."],["StampedLogger","A `fmt::Write` adapter that prints a timestamp before each line."],["WriteLogger","Wraps a `fmt::Write` implementor and forwards the `log` crates logging macros to it."]]});
