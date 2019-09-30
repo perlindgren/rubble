@@ -305,3 +305,57 @@ impl<'a> Consumer for SimpleConsumer<'a> {
         }
     }
 }
+
+/// Runs Rubble's packet queue testsuite against the given `PacketQueue`.
+///
+/// This can be used when implementing your own packet queue. Simply create a `#[test]` function as
+/// usual and call `run_tests` from there. The function will panic when any test fails.
+///
+/// The passed `queue` must be an empty queue with bounded space for at least one packet. "Bounded"
+/// here means that the queue must have a finite, practical size as the test suite may fill it up
+/// completely.
+///
+/// Simultaneously, this function ensures that `PacketQueue` implementors can be created and used by
+/// a generic function, something that sometimes doesn't work when invariant lifetimes are involved.
+pub fn run_tests(queue: impl PacketQueue) {
+    let (p, mut c) = queue.split();
+
+    assert!(!c.has_data(), "empty queue `has_data()` returned true");
+
+    let err = c
+        .consume_raw_with(|_, _| -> Consume<()> {
+            unreachable!("`consume_raw_with` on empty queue invoked the callback");
+        })
+        .unwrap_err();
+
+    assert_eq!(
+        err,
+        Error::Eof,
+        "empty queues `consume_raw_with` didn't return expected `Error::Eof"
+    );
+
+    let err = c
+        .consume_pdu_with(|_, _| -> Consume<()> {
+            unreachable!("`consume_pdu_with` on empty queue invoked the callback");
+        })
+        .unwrap_err();
+
+    assert_eq!(
+        err,
+        Error::Eof,
+        "empty queues `consume_pdu_with` didn't return expected `Error::Eof"
+    );
+
+    let free_space = p.free_space();
+    assert!(
+        free_space >= MIN_PAYLOAD_BUF as u8,
+        "empty queue has space for {} byte payload, need at least {}",
+        free_space,
+        MIN_PAYLOAD_BUF
+    );
+}
+
+#[test]
+fn simple_queue() {
+    run_tests(&mut SimpleQueue::new());
+}
