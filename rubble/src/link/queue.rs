@@ -318,7 +318,7 @@ impl<'a> Consumer for SimpleConsumer<'a> {
 /// Simultaneously, this function ensures that `PacketQueue` implementors can be created and used by
 /// a generic function, something that sometimes doesn't work when invariant lifetimes are involved.
 pub fn run_tests(queue: impl PacketQueue) {
-    let (p, mut c) = queue.split();
+    let (mut p, mut c) = queue.split();
 
     assert!(!c.has_data(), "empty queue `has_data()` returned true");
 
@@ -352,6 +352,39 @@ pub fn run_tests(queue: impl PacketQueue) {
         "empty queue has space for {} byte payload, need at least {}",
         free_space,
         MIN_PAYLOAD_BUF
+    );
+
+    // Enqueue the largest packet
+    p.produce_with(MIN_PAYLOAD_BUF as u8, |writer| -> Result<_, Error> {
+        assert_eq!(
+            writer.space_left(),
+            MIN_PAYLOAD_BUF,
+            "produce_with didn't pass ByteWriter with correct buffer"
+        );
+        writer.write_slice(&[0; MIN_PAYLOAD_BUF]).unwrap();
+        Ok(Llid::DataStart)
+    })
+    .expect("enqueuing packet failed");
+
+    assert!(
+        c.has_data(),
+        "consumer's `has_data()` still false after enqueuing packet"
+    );
+
+    c.consume_raw_with(|header, data| -> Consume<()> {
+        assert_eq!(usize::from(header.payload_length()), MIN_PAYLOAD_BUF);
+        assert_eq!(
+            data,
+            &[0; MIN_PAYLOAD_BUF][..],
+            "consume_raw_with didn't yield correct payload"
+        );
+        Consume::never(Ok(()))
+    })
+    .expect("consume_raw_with failed when data is available");
+
+    assert!(
+        c.has_data(),
+        "`has_data()` returned false after using `Consume::never`"
     );
 }
 
