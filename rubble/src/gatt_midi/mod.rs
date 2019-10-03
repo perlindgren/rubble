@@ -17,7 +17,7 @@ use {
 
 /// A demo `AttributeProvider` that will enumerate as a *Midi Service*.
 pub struct MidiServiceAttrs {
-    attributes: [Attribute<'static>; 3],
+    attributes: [Attribute<'static>; 4],
 }
 
 // MIDI Service (UUID: 03B80E5A-EDE8-4B33-A751-6CE34EC4C700)
@@ -42,17 +42,35 @@ impl MidiServiceAttrs {
                     att_type: Uuid16(0x2803).into(), // "Characteristic"
                     handle: Handle::from_raw(0x0002),
                     value: HexSlice(&[
-                        0x02, // 1 byte properties: READ = 0x02
-                        0x03, 0x00, // 2 bytes handle = 0x0003
+                        0x02 | 0x08 | 0x04 | 0x10, // 1 byte properties: READ = 0x02, WRITE_REQ = 0x08, WRITE_CMD = 0x04, NOTIFICATION = 0x10
+                        0x03,
+                        0x00, // 2 bytes handle = 0x0003
                         // the actual UUID
-                        0xF3, 0x6B, 0x10, 0x9D, 0x66, 0xF2, /*-*/
-                        0xA9, 0xA1, /*-*/
-                        0x12, 0x41, /*-*/
-                        0x68, 0x38, /*-*/
-                        0xDB, 0xE5, 0x72, 0x77,
+                        0xF3,
+                        0x6B,
+                        0x10,
+                        0x9D,
+                        0x66,
+                        0xF2, /*-*/
+                        0xA9,
+                        0xA1, /*-*/
+                        0x12,
+                        0x41, /*-*/
+                        0x68,
+                        0x38, /*-*/
+                        0xDB,
+                        0xE5,
+                        0x72,
+                        0x77,
                     ]),
                 },
-                // Characteristic value (Battery Level)
+                // CCCD
+                Attribute {
+                    att_type: AttUuid::Uuid16(Uuid16(0x2902)),
+                    handle: Handle::from_raw(0x0004),
+                    value: HexSlice(&[0x00, 0x00]),
+                },
+                // Characteristic value (Empty Packet)
                 Attribute {
                     att_type: AttUuid::Uuid128(Uuid::from_bytes([
                         0xF3, 0x6B, 0x10, 0x9D, 0x66, 0xF2, /*-*/

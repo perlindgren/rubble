@@ -5,11 +5,13 @@
     "tasks": [
         {
             "type": "cargo",
-            "subcommand": "check",
+            "subcommand": "build",
             "problemMatcher": [
                 "$rustc"
             ],
-            "group": "build"
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
-}
