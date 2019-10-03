@@ -123,8 +123,8 @@ impl AttributeProvider for MidiServiceAttrs {
 
     fn group_end(&self, handle: Handle) -> Option<&Attribute<'_>> {
         match handle.as_u16() {
-            0x0001 => Some(&self.attributes[2]),
-            0x0002 => Some(&self.attributes[2]),
+            0x0001 => Some(&self.attributes[3]),
+            0x0002 => Some(&self.attributes[3]),
             _ => None,
         }
     }
