@@ -64,12 +64,6 @@ impl MidiServiceAttrs {
                         0x77,
                     ]),
                 },
-                // CCCD
-                Attribute {
-                    att_type: AttUuid::Uuid16(Uuid16(0x2902)),
-                    handle: Handle::from_raw(0x0004),
-                    value: HexSlice(&[0x00, 0x00]),
-                },
                 // Characteristic value (Empty Packet)
                 Attribute {
                     att_type: AttUuid::Uuid128(Uuid::from_bytes([
@@ -81,6 +75,12 @@ impl MidiServiceAttrs {
                     ])),
                     handle: Handle::from_raw(0x0003),
                     value: HexSlice(&[]),
+                },
+                // CCCD
+                Attribute {
+                    att_type: AttUuid::Uuid16(Uuid16(0x2902)),
+                    handle: Handle::from_raw(0x0004),
+                    value: HexSlice(&[0x00, 0x00]),
                 },
             ],
         }
