@@ -38,6 +38,7 @@ pub mod config;
 mod crc;
 mod error;
 pub mod gatt;
+pub mod gatt_midi;
 pub mod l2cap;
 pub mod link;
 pub mod phy;
