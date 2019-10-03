@@ -9,7 +9,7 @@ use {
     crate::{
         att::{AttUuid, Attribute, AttributeProvider, Handle, HandleRange},
         utils::HexSlice,
-        uuid::Uuid16,
+        uuid::{Uuid, Uuid16},
         Error,
     },
     core::{cmp, slice},
@@ -54,9 +54,15 @@ impl MidiServiceAttrs {
                 },
                 // Characteristic value (Battery Level)
                 Attribute {
-                    att_type: AttUuid::Uuid16(Uuid16(0x2A19)), // "Battery Level"
+                    att_type: AttUuid::Uuid128(Uuid::from_bytes([
+                        0xF3, 0x6B, 0x10, 0x9D, 0x66, 0xF2, /*-*/
+                        0xA9, 0xA1, /*-*/
+                        0x12, 0x41, /*-*/
+                        0x68, 0x38, /*-*/
+                        0xDB, 0xE5, 0x72, 0x77,
+                    ])),
                     handle: Handle::from_raw(0x0003),
-                    value: HexSlice(&[48u8]),
+                    value: HexSlice(&[]),
                 },
             ],
         }
