@@ -14,7 +14,7 @@ use {
         phy::DataChannel,
         time::{Duration, Instant, Timer},
         utils::{Hex, HexSlice},
-        BLUETOOTH_VERSION,
+        Error, BLUETOOTH_VERSION,
     },
     core::{marker::PhantomData, num::Wrapping},
 };
@@ -53,8 +53,8 @@ pub struct Connection<C: Config> {
     /// Whether we have ever received a data packet in this connection.
     received_packet: bool,
 
-    tx: Consumer,
-    rx: Producer,
+    tx: C::PacketConsumer,
+    rx: C::PacketProducer,
 
     /// LLCP connection update data received in a previous LL Control PDU.
     ///
@@ -79,8 +79,8 @@ impl<C: Config> Connection<C> {
     pub fn create(
         lldata: &ConnectRequestData,
         rx_end: Instant,
-        tx: Consumer,
-        rx: Producer,
+        tx: C::PacketConsumer,
+        rx: C::PacketProducer,
     ) -> (Self, Cmd) {
         assert_eq!(
             lldata.slave_latency(),
@@ -211,7 +211,14 @@ impl<C: Config> Connection<C> {
                 // Try to buffer the packet. If it fails, we don't acknowledge it, so it will be
                 // resent until we have space.
 
-                if self.rx.produce_raw(header, payload).is_ok() {
+                let result: Result<(), Error> =
+                    self.rx
+                        .produce_with(header.payload_length().into(), |writer| {
+                            writer.write_slice(payload)?;
+                            Ok(header.llid())
+                        });
+
+                if result.is_ok() {
                     // Acknowledge the packet
                     self.next_expected_seq_num += SeqNum::ONE;
                 } else {

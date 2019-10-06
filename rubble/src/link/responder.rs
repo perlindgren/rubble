@@ -1,8 +1,9 @@
 use crate::{
+    bytes::ToBytes,
     config::Config,
     l2cap::{L2CAPState, L2CAPStateTx},
     link::{
-        data::{ControlPdu, Pdu},
+        data::{ControlPdu, Llid, Pdu},
         queue::{Consume, Consumer, Producer},
     },
     utils::HexSlice,
@@ -19,14 +20,18 @@ use crate::{
 /// the responder directly, and all L2CAP data is forwarded to an `L2CAPState<M>`. Note that most
 /// LLCPDUs are handled directly by the real-time code.
 pub struct Responder<C: Config> {
-    tx: Producer,
-    rx: Option<Consumer>,
+    tx: C::PacketProducer,
+    rx: Option<C::PacketConsumer>,
     l2cap: L2CAPState<C::ChannelMapper>,
 }
 
 impl<C: Config> Responder<C> {
     /// Creates a new packet processor hooked up to data channel packet queues.
-    pub fn new(tx: Producer, rx: Consumer, l2cap: L2CAPState<C::ChannelMapper>) -> Self {
+    pub fn new(
+        tx: C::PacketProducer,
+        rx: C::PacketConsumer,
+        l2cap: L2CAPState<C::ChannelMapper>,
+    ) -> Self {
         Self {
             tx,
             rx: Some(rx),
@@ -66,7 +71,13 @@ impl<C: Config> Responder<C> {
                     info!("-> Response: {:?}", response);
 
                     // Consume the LL Control PDU iff we can fit the response in the TX buffer:
-                    Consume::on_success(this.tx.produce_pdu(Pdu::from(&response)))
+                    Consume::on_success(this.tx.produce_with(
+                        response.encoded_size().into(),
+                        |writer| {
+                            response.to_bytes(writer)?;
+                            Ok(Llid::Control)
+                        },
+                    ))
                 }
                 Pdu::DataStart { message } => {
                     info!("L2start: {:?}", HexSlice(message));
@@ -81,7 +92,7 @@ impl<C: Config> Responder<C> {
     }
 
     /// Obtains access to the L2CAP instance.
-    pub fn l2cap(&mut self) -> L2CAPStateTx<'_, C::ChannelMapper> {
+    pub fn l2cap(&mut self) -> L2CAPStateTx<'_, C::ChannelMapper, C::PacketProducer> {
         self.l2cap.tx(&mut self.tx)
     }
 
@@ -89,7 +100,7 @@ impl<C: Config> Responder<C> {
     ///
     /// This can possibly be removed after *RFC 2229 (Closures Capture Disjoint Fields)* is
     /// implemented in stable Rust.
-    fn with_rx<R>(&mut self, f: impl FnOnce(&mut Consumer, &mut Self) -> R) -> R {
+    fn with_rx<R>(&mut self, f: impl FnOnce(&mut C::PacketConsumer, &mut Self) -> R) -> R {
         let mut rx = self.rx.take().unwrap();
         let result = f(&mut rx, self);
         self.rx = Some(rx);

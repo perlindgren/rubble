@@ -140,7 +140,6 @@ use {
         ad_structure::AdStructure,
         advertising::{Pdu, PduBuf},
         connection::Connection,
-        queue::{Consumer, Producer},
         seq_num::SeqNum,
     },
     crate::{
@@ -169,6 +168,18 @@ use {
 ///
 /// `x^24 + x^10 + x^9 + x^6 + x^4 + x^3 + x + 1`
 pub const CRC_POLY: u32 = 0b00000001_00000000_00000110_01011011;
+
+/// Min. size a data PDU payload buffer must have (assuming only the bare minimum PDU size is
+/// supported).
+///
+/// Data channel PDUs are smaller than advertising channel PDUs, so this value is less than
+/// `MIN_PAYLOAD_BUF`.
+pub const MIN_DATA_PAYLOAD_BUF: usize = 27;
+
+/// Min. size a data PDU buffer must have.
+///
+/// This is `MIN_DATA_PAYLOAD_BUF` plus the size of the data PDU header (2 Bytes).
+pub const MIN_DATA_PDU_BUF: usize = MIN_DATA_PAYLOAD_BUF + 2;
 
 /// Min. size a PDU payload buffer must have (to cover both advertising and data channels).
 ///
@@ -216,7 +227,7 @@ enum State<C: Config> {
         // FIXME: spec check; no idea what order or change delay
         channel: AdvertisingChannel,
 
-        data_queues: Option<(Consumer, Producer)>,
+        data_queues: Option<(C::PacketConsumer, C::PacketProducer)>,
     },
 
     /// Connected with another device.
@@ -262,8 +273,8 @@ impl<C: Config> LinkLayer<C> {
         interval: Duration,
         data: &[AdStructure<'_>],
         transmitter: &mut C::Transmitter,
-        tx: Consumer,
-        rx: Producer,
+        tx: C::PacketConsumer,
+        rx: C::PacketProducer,
     ) -> Result<NextUpdate, Error> {
         // TODO tear down existing connection?
 
