@@ -84,3 +84,14 @@ client XXX: 'BLE MIDI' [type=user,pid=242118]
 138:0   Note off                0, note 100, velocity 100
 138:0   Note on                 0, note 100, velocity 100
 ```
+
+### programming
+
+``` shell
+> cd demos
+> openocd -f openocd_jlink.cfg
+```
+
+``` shell
+> cargo run
+```
