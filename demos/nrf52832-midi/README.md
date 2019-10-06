@@ -61,4 +61,20 @@ or alternatively
 
 $ journalctl --unit=bluetooth -f
 
+### Midi on arch
 
+``` shell
+> aconnect -i
+client 0: 'System' [type=kernel]
+    0 'Timer           '
+    1 'Announce        '
+client 14: 'Midi Through' [type=kernel]
+    0 'Midi Through Port-0'
+client 128: 'BLE MIDI' [type=user,pid=242118]
+    0 'BLE MIDI Bluetooth'
+
+```
+
+``` shell
+> aseqdump -p 128
+```
