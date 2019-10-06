@@ -36,5 +36,29 @@ The accessory must support MTU negotiation and must support the MTU Exchange com
 Unlike legacy MIDI, BLE is a packet based protocol. Incoming messages cannot be instantly forwarded to the receiving party. Instead they must be buffered and transmitted each BLE connection interval, which is negotiated between the sender and receiver. To maintain precise inter-event timing, this protocol uses 13-bit millisecond-resolution timestamps to express the render time and event spacing of MIDI messages.
 
 
+## Debugging
+
+### Wireshark
+
+### log
+
+stty -F /dev/ttyXXX speed 1000000 && cat /dev/ttyXXX > log.txt
+
+### bluez debug messages
+
+enable debugging by adding a -d after
+
+ExecStart=/usr/libexec/bluetooth/bluetoothd
+
+in /usr/lib/systemd/system/bluetooth.service
+
+Save, then:
+
+$ systemctl daemon-reload
+$ systemctl restart bluetooth
+
+or alternatively
+
+$ journalctl --unit=bluetooth -f
 
 

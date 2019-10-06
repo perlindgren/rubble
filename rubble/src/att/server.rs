@@ -24,7 +24,10 @@ impl<A: AttributeProvider> AttributeServer<A> {
     }
 
     /// Prepares for performing a server-initiated action (eg. sending a notification/indication).
-    pub fn with_sender<'a>(&'a mut self, sender: Sender<'a>) -> AttributeServerTx<'a, A> {
+    pub fn with_sender<'a>(
+        &'a mut self,
+        sender: Sender<'a>,
+    ) -> AttributeServerTx<'a, A> {
         AttributeServerTx {
             server: self,
             sender,
@@ -92,9 +95,14 @@ impl<A: AttributeProvider> AttributeServer<A> {
                     self.attrs
                         .for_attrs_in_range(range, |_provider, attr| {
                             if attr.att_type == *attribute_type {
-                                let data =
-                                    ByTypeAttData::new(att_mtu, attr.handle, attr.value.as_ref());
-                                if size == Some(data.encoded_size()) || size.is_none() {
+                                let data = ByTypeAttData::new(
+                                    att_mtu,
+                                    attr.handle,
+                                    attr.value.as_ref(),
+                                );
+                                if size == Some(data.encoded_size())
+                                    || size.is_none()
+                                {
                                     // Can try to encode `data`. If we run out of space, end the list.
                                     data.to_bytes(writer)?;
                                     size = Some(data.encoded_size());
@@ -149,10 +157,15 @@ impl<A: AttributeProvider> AttributeServer<A> {
                                 let data = ByGroupAttData::new(
                                     att_mtu,
                                     attr.handle,
-                                    provider.group_end(attr.handle).unwrap().handle,
+                                    provider
+                                        .group_end(attr.handle)
+                                        .unwrap()
+                                        .handle,
                                     attr.value.as_ref(),
                                 );
-                                if size == Some(data.encoded_size()) || size.is_none() {
+                                if size == Some(data.encoded_size())
+                                    || size.is_none()
+                                {
                                     // Can try to encode `data`. If we run out of space, end the list.
                                     data.to_bytes(writer)?;
                                     size = Some(data.encoded_size());
@@ -191,7 +204,9 @@ impl<A: AttributeProvider> AttributeServer<A> {
                         self.attrs.for_attrs_in_range(
                             HandleRange::new(*handle, *handle),
                             |_provider, attr| {
-                                let value = if writer.space_left() < attr.value.as_ref().len() {
+                                let value = if writer.space_left()
+                                    < attr.value.as_ref().len()
+                                {
                                     &attr.value.as_ref()[..writer.space_left()]
                                 } else {
                                     attr.value.as_ref()
@@ -214,15 +229,36 @@ impl<A: AttributeProvider> AttributeServer<A> {
             | AttPdu::FindByTypeValueRsp { .. }
             | AttPdu::ReadByTypeRsp { .. }
             | AttPdu::ReadRsp { .. }
+            | AttPdu::WriteRsp { .. }
             | AttPdu::ReadBlobRsp { .. }
             | AttPdu::ReadMultipleRsp { .. }
             | AttPdu::ReadByGroupRsp { .. }
-            | AttPdu::WriteRsp { .. }
             | AttPdu::PrepareWriteRsp { .. }
             | AttPdu::ExecuteWriteRsp { .. }
             | AttPdu::HandleValueNotification { .. }
             | AttPdu::HandleValueIndication { .. } => {
                 Err(AttError::new(ErrorCode::InvalidPdu, Handle::NULL))
+            }
+
+            // Handle the BLE MIDI CCCD
+            AttPdu::WriteReq { handle, value } => {
+                info!("[ CCCD handle: {:?}, value: {:?} ]", handle, value);
+                match handle.as_u16() {
+                    // CCCD handle for BLE MIDI
+                    0x0004 => {
+                        responder
+                            .send_with(|writer| -> Result<(), Error> {
+                                writer.write_u8(Opcode::WriteRsp.into())?;
+                                Ok(())
+                            })
+                            .unwrap();
+                        Ok(())
+                    }
+                    _ => Err(AttError::new(
+                        ErrorCode::RequestNotSupported,
+                        Handle::NULL,
+                    )),
+                }
             }
 
             // Unknown (undecoded) or unimplemented requests and commands
@@ -231,7 +267,6 @@ impl<A: AttributeProvider> AttributeServer<A> {
             | AttPdu::FindByTypeValueReq { .. }
             | AttPdu::ReadBlobReq { .. }
             | AttPdu::ReadMultipleReq { .. }
-            | AttPdu::WriteReq { .. }
             | AttPdu::WriteCommand { .. }
             | AttPdu::SignedWriteCommand { .. }
             | AttPdu::PrepareWriteReq { .. }
@@ -242,7 +277,10 @@ impl<A: AttributeProvider> AttributeServer<A> {
                     Ok(())
                 } else {
                     // Unknown requests are rejected with a `RequestNotSupported` error
-                    Err(AttError::new(ErrorCode::RequestNotSupported, Handle::NULL))
+                    Err(AttError::new(
+                        ErrorCode::RequestNotSupported,
+                        Handle::NULL,
+                    ))
                 }
             }
         }
@@ -250,7 +288,11 @@ impl<A: AttributeProvider> AttributeServer<A> {
 }
 
 impl<A: AttributeProvider> ProtocolObj for AttributeServer<A> {
-    fn process_message(&mut self, message: &[u8], mut responder: Sender<'_>) -> Result<(), Error> {
+    fn process_message(
+        &mut self,
+        message: &[u8],
+        mut responder: Sender<'_>,
+    ) -> Result<(), Error> {
         let pdu = &AttPdu::from_bytes(&mut ByteReader::new(message))?;
         let opcode = pdu.opcode();
         debug!("ATT<- {:?}", pdu);
