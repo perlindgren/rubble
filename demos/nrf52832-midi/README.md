@@ -69,11 +69,18 @@ client 0: 'System' [type=kernel]
     1 'Announce        '
 client 14: 'Midi Through' [type=kernel]
     0 'Midi Through Port-0'
-client 128: 'BLE MIDI' [type=user,pid=242118]
+client XXX: 'BLE MIDI' [type=user,pid=242118]
     0 'BLE MIDI Bluetooth'
 
 ```
 
 ``` shell
-> aseqdump -p 128
+> aseqdump -p XXX
+138:0   Note on                 0, note 100, velocity 100
+138:0   Note off                0, note 100, velocity 100
+138:0   Note on                 0, note 100, velocity 100
+138:0   Note off                0, note 100, velocity 100
+138:0   Note on                 0, note 100, velocity 100
+138:0   Note off                0, note 100, velocity 100
+138:0   Note on                 0, note 100, velocity 100
 ```

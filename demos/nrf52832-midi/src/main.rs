@@ -10,6 +10,7 @@ mod logger;
 use {
     bbqueue::Consumer,
     byteorder::{ByteOrder, LittleEndian},
+    core::convert::TryInto,
     core::fmt::Write,
     cortex_m_semihosting::hprintln,
     nrf52832_hal::{
@@ -21,6 +22,7 @@ use {
     },
     rtfm::app,
     rubble::{
+        att::Handle,
         config::Config,
         gatt_midi::MidiServiceAttrs,
         l2cap::{BleChannelMap, L2CAPState},
@@ -188,6 +190,9 @@ const APP: () = {
 
     #[idle(resources = [LOG_SINK, SERIAL, BLE_R])]
     fn idle() -> ! {
+        let mut state = false;
+        let mut on = true;
+        let mut time = 0;
         // Drain the logging buffer through the serial connection
         loop {
             if cfg!(feature = "log") {
@@ -201,8 +206,52 @@ const APP: () = {
             }
 
             if resources.BLE_R.has_work() {
+                state = true;
                 resources.BLE_R.process_one().unwrap();
+            }
+
+            if state {
+                match resources.BLE_R.l2cap().att() {
+                    Some(mut att) => {
+                        att.notify_raw(
+                            Handle::from_raw(0x0003),
+                            &MidiPkg::new(
+                                time,
+                                match on {
+                                    true => 0x90, // note on, channel 0
+                                    _ => 0x80,    // note off, channel 0
+                                },
+                                0x64,
+                                0x64,
+                            )
+                            .0,
+                        )
+                        .unwrap();
+                        on = !on;
+                        time += 1; // this shoud be time in micro seconds
+                    }
+                    _ => (),
+                }
             }
         }
     }
 };
+
+struct MidiPkg([u8; 5]);
+
+impl MidiPkg {
+    fn new(time: u32, status: u8, md1: u8, md2: u8) -> Self {
+        let mut pkg = MidiPkg([0; 5]);
+        pkg.set(time, status, md1, md2);
+        pkg
+    }
+
+    fn set(&mut self, time: u32, status: u8, md1: u8, md2: u8) {
+        self.0[0] =
+            ((1 << 7) | ((time >> 7) & 0b0011_1111)).try_into().unwrap();
+        self.0[1] = ((1 << 7) | (time & 0b0111_1111)).try_into().unwrap();
+        self.0[2] = status;
+        self.0[3] = md1;
+        self.0[4] = md2;
+    }
+}
