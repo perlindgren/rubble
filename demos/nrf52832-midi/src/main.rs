@@ -8,7 +8,6 @@ use panic_semihosting as _;
 mod logger;
 
 use {
-    // bbqueue::{bbq, BBQueue, Consumer},
     bbqueue::Consumer,
     byteorder::{ByteOrder, LittleEndian},
     core::fmt::Write,
@@ -22,7 +21,6 @@ use {
     },
     rtfm::app,
     rubble::{
-        beacon::Beacon,
         config::Config,
         gatt_midi::MidiServiceAttrs,
         l2cap::{BleChannelMap, L2CAPState},
@@ -42,12 +40,6 @@ use {
 
 pub enum AppConfig {}
 
-// impl Config for AppConfig {
-//     type Timer = BleTimer<pac::TIMER0>;
-//     type Transmitter = BleRadio;
-//     type ChannelMapper = BleChannelMap<MidiServiceAttrs, NoSecurity>;
-// }
-
 impl Config for AppConfig {
     type Timer = BleTimer<pac::TIMER0>;
     type Transmitter = BleRadio;
@@ -58,11 +50,7 @@ impl Config for AppConfig {
     type PacketConsumer = SimpleConsumer<'static>;
 }
 
-/// Whether to broadcast a beacon or to establish a proper connection.
-///
-/// This is just used to test different code paths. Note that you can't do both
-/// at the same time unless you also generate separate device addresses.
-const TEST_BEACON: bool = false;
+// Midi BLE Device Application
 
 #[app(device = nrf52832_hal::nrf52832_pac)]
 const APP: () = {
@@ -73,8 +61,6 @@ const APP: () = {
     static mut BLE_LL: LinkLayer<AppConfig> = ();
     static mut BLE_R: Responder<AppConfig> = ();
     static mut RADIO: BleRadio = ();
-    static mut BEACON: Beacon = ();
-    static mut BEACON_TIMER: pac::TIMER1 = ();
     static mut SERIAL: Uarte<UARTE0> = ();
     static mut LOG_SINK: Consumer = ();
 
@@ -94,24 +80,6 @@ const APP: () = {
         }
 
         let ble_timer = BleTimer::init(device.TIMER0);
-
-        {
-            // Configure TIMER1 as the beacon timer. It's only used as a 16-bit timer.
-            let timer = &mut device.TIMER1;
-            timer.bitmode.write(|w| w.bitmode()._16bit());
-            // prescaler = 2^9    = 512
-            // 16 MHz / prescaler = 31_250 Hz
-            timer.prescaler.write(|w| unsafe { w.prescaler().bits(9) }); // 0-9
-            timer.intenset.write(|w| w.compare0().set());
-            timer.shorts.write(|w| w.compare0_clear().enabled());
-            timer.cc[0].write(|w| unsafe { w.bits(31_250 / 3) }); // ~3x per second
-            timer.tasks_clear.write(|w| unsafe { w.bits(1) });
-
-            if TEST_BEACON {
-                timer.tasks_start.write(|w| unsafe { w.bits(1) });
-            }
-        }
-
         let p0 = device.P0.split();
 
         let mut serial = {
@@ -156,19 +124,7 @@ const APP: () = {
             resources.BLE_RX_BUF,
         );
 
-        let beacon = Beacon::new(
-            device_address,
-            &[AdStructure::CompleteLocalName("Rusty Beacon (nRF52)")],
-        )
-        .unwrap();
-
         let log_sink = logger::init(ble_timer.create_stamp_source());
-
-        // Create TX/RX queues
-        // // FIXME: Because of how bbqueue works, these have to be 2x the max. PDU size. We don't need
-        // // contiguous segments though, so we could use a "normal" queue instead.
-        // let (tx, tx_cons) = queue::create(bbq![MIN_PDU_BUF * 2].unwrap());
-        // let (rx_prod, rx) = queue::create(bbq![MIN_PDU_BUF * 2].unwrap());
 
         // Create TX/RX queues
         let (tx, tx_cons) = resources.TX_QUEUE.split();
@@ -185,25 +141,21 @@ const APP: () = {
             )),
         );
 
-        if !TEST_BEACON {
-            // Send advertisement and set up regular interrupt
-            let next_update = ll
-                .start_advertise(
-                    Duration::from_millis(200),
-                    &[AdStructure::CompleteLocalName("BLE MIDI")],
-                    &mut radio,
-                    tx_cons,
-                    rx_prod,
-                )
-                .unwrap();
-            ll.timer().configure_interrupt(next_update);
-        }
+        // Send advertisement and set up regular interrupt
+        let next_update = ll
+            .start_advertise(
+                Duration::from_millis(200),
+                &[AdStructure::CompleteLocalName("BLE MIDI")],
+                &mut radio,
+                tx_cons,
+                rx_prod,
+            )
+            .unwrap();
+        ll.timer().configure_interrupt(next_update);
 
         RADIO = radio;
         BLE_LL = ll;
         BLE_R = resp;
-        BEACON = beacon;
-        BEACON_TIMER = device.TIMER1;
         SERIAL = serial;
         LOG_SINK = log_sink;
     }
@@ -232,15 +184,6 @@ const APP: () = {
             .BLE_LL
             .timer()
             .configure_interrupt(cmd.next_update);
-    }
-
-    /// Fire the beacon.
-    #[interrupt(resources = [BEACON_TIMER, BEACON, RADIO])]
-    fn TIMER1() {
-        // acknowledge event
-        resources.BEACON_TIMER.events_compare[0].reset();
-
-        resources.BEACON.broadcast(&mut *resources.RADIO);
     }
 
     #[idle(resources = [LOG_SINK, SERIAL, BLE_R])]
