@@ -229,10 +229,10 @@ impl<A: AttributeProvider> AttributeServer<A> {
             | AttPdu::FindByTypeValueRsp { .. }
             | AttPdu::ReadByTypeRsp { .. }
             | AttPdu::ReadRsp { .. }
-            | AttPdu::WriteRsp { .. }
             | AttPdu::ReadBlobRsp { .. }
             | AttPdu::ReadMultipleRsp { .. }
             | AttPdu::ReadByGroupRsp { .. }
+            | AttPdu::WriteRsp { .. }
             | AttPdu::PrepareWriteRsp { .. }
             | AttPdu::ExecuteWriteRsp { .. }
             | AttPdu::HandleValueNotification { .. }
