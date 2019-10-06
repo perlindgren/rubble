@@ -35,7 +35,6 @@ The accessory must support MTU negotiation and must support the MTU Exchange com
 
 Unlike legacy MIDI, BLE is a packet based protocol. Incoming messages cannot be instantly forwarded to the receiving party. Instead they must be buffered and transmitted each BLE connection interval, which is negotiated between the sender and receiver. To maintain precise inter-event timing, this protocol uses 13-bit millisecond-resolution timestamps to express the render time and event spacing of MIDI messages.
 
-
 ## Debugging
 
 ### Wireshark

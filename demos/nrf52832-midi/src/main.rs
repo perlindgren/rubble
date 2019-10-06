@@ -8,7 +8,8 @@ use panic_semihosting as _;
 mod logger;
 
 use {
-    bbqueue::{bbq, BBQueue, Consumer},
+    // bbqueue::{bbq, BBQueue, Consumer},
+    bbqueue::Consumer,
     byteorder::{ByteOrder, LittleEndian},
     core::fmt::Write,
     cortex_m_semihosting::hprintln,
@@ -26,8 +27,9 @@ use {
         gatt_midi::MidiServiceAttrs,
         l2cap::{BleChannelMap, L2CAPState},
         link::{
-            ad_structure::AdStructure, queue, AddressKind, DeviceAddress,
-            LinkLayer, Responder, MIN_PDU_BUF,
+            ad_structure::AdStructure,
+            queue::{PacketQueue, SimpleConsumer, SimpleProducer, SimpleQueue},
+            AddressKind, DeviceAddress, LinkLayer, Responder, MIN_PDU_BUF,
         },
         security::NoSecurity,
         time::{Duration, Timer},
@@ -40,10 +42,20 @@ use {
 
 pub enum AppConfig {}
 
+// impl Config for AppConfig {
+//     type Timer = BleTimer<pac::TIMER0>;
+//     type Transmitter = BleRadio;
+//     type ChannelMapper = BleChannelMap<MidiServiceAttrs, NoSecurity>;
+// }
+
 impl Config for AppConfig {
     type Timer = BleTimer<pac::TIMER0>;
     type Transmitter = BleRadio;
     type ChannelMapper = BleChannelMap<MidiServiceAttrs, NoSecurity>;
+
+    type PacketQueue = &'static mut SimpleQueue;
+    type PacketProducer = SimpleProducer<'static>;
+    type PacketConsumer = SimpleConsumer<'static>;
 }
 
 /// Whether to broadcast a beacon or to establish a proper connection.
@@ -56,6 +68,8 @@ const TEST_BEACON: bool = false;
 const APP: () = {
     static mut BLE_TX_BUF: PacketBuffer = [0; MIN_PDU_BUF];
     static mut BLE_RX_BUF: PacketBuffer = [0; MIN_PDU_BUF];
+    static mut TX_QUEUE: SimpleQueue = SimpleQueue::new();
+    static mut RX_QUEUE: SimpleQueue = SimpleQueue::new();
     static mut BLE_LL: LinkLayer<AppConfig> = ();
     static mut BLE_R: Responder<AppConfig> = ();
     static mut RADIO: BleRadio = ();
@@ -64,7 +78,7 @@ const APP: () = {
     static mut SERIAL: Uarte<UARTE0> = ();
     static mut LOG_SINK: Consumer = ();
 
-    #[init(resources = [BLE_TX_BUF, BLE_RX_BUF])]
+    #[init(resources = [BLE_TX_BUF, BLE_RX_BUF, TX_QUEUE, RX_QUEUE])]
     fn init() {
         hprintln!("\n<< INIT >>\n").ok();
 
@@ -151,10 +165,14 @@ const APP: () = {
         let log_sink = logger::init(ble_timer.create_stamp_source());
 
         // Create TX/RX queues
-        // FIXME: Because of how bbqueue works, these have to be 2x the max. PDU size. We don't need
-        // contiguous segments though, so we could use a "normal" queue instead.
-        let (tx, tx_cons) = queue::create(bbq![MIN_PDU_BUF * 2].unwrap());
-        let (rx_prod, rx) = queue::create(bbq![MIN_PDU_BUF * 2].unwrap());
+        // // FIXME: Because of how bbqueue works, these have to be 2x the max. PDU size. We don't need
+        // // contiguous segments though, so we could use a "normal" queue instead.
+        // let (tx, tx_cons) = queue::create(bbq![MIN_PDU_BUF * 2].unwrap());
+        // let (rx_prod, rx) = queue::create(bbq![MIN_PDU_BUF * 2].unwrap());
+
+        // Create TX/RX queues
+        let (tx, tx_cons) = resources.TX_QUEUE.split();
+        let (rx_prod, rx) = resources.RX_QUEUE.split();
 
         // Create the actual BLE stack objects
         let mut ll = LinkLayer::<AppConfig>::new(device_address, ble_timer);
