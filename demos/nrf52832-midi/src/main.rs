@@ -53,6 +53,7 @@ impl Config for AppConfig {
 }
 
 // Midi BLE Device Application
+const NOTE_DEMO: bool = false;
 
 #[app(device = nrf52832_hal::nrf52832_pac)]
 const APP: () = {
@@ -213,20 +214,37 @@ const APP: () = {
             if state {
                 match resources.BLE_R.l2cap().att() {
                     Some(mut att) => {
-                        att.notify_raw(
-                            Handle::from_raw(0x0003),
-                            &MidiPkg::new(
-                                time,
-                                match on {
-                                    true => 0x90, // note on, channel 0
-                                    _ => 0x80,    // note off, channel 0
-                                },
-                                0x64,
-                                0x64,
+                        if NOTE_DEMO {
+                            att.notify_raw(
+                                Handle::from_raw(0x0003),
+                                &MidiPkg::new(
+                                    time,
+                                    match on {
+                                        true => 0x90, // note on, channel 0
+                                        _ => 0x80,    // note off, channel 0
+                                    },
+                                    0x64,
+                                    0x64,
+                                )
+                                .0,
                             )
-                            .0,
-                        )
-                        .unwrap();
+                            .unwrap();
+                        } else {
+                            att.notify_raw(
+                                Handle::from_raw(0x0003),
+                                &MidiPkg::new(
+                                    time,
+                                    0xb0, // contoller on channel 1
+                                    0x05, // breath controller
+                                    match on {
+                                        true => 0x7f, // note on, channel 0
+                                        _ => 0x00,    // note off, channel 0
+                                    },
+                                )
+                                .0,
+                            )
+                            .unwrap();
+                        }
                         on = !on;
                         time += 1; // this shoud be time in micro seconds
                     }
@@ -253,5 +271,20 @@ impl MidiPkg {
         self.0[2] = status;
         self.0[3] = md1;
         self.0[4] = md2;
+    }
+
+    pub fn control_msg(
+        &mut self,
+        time: u32,
+        chan: u8,
+        ctrl_no: u8,
+        ctrl_val: u8,
+    ) {
+        self.set(
+            time,
+            0xb0 | (chan | 0x0f), // control message
+            ctrl_no & 0x7f,       // controller number
+            ctrl_val & 0x7f,      // controller value
+        )
     }
 }

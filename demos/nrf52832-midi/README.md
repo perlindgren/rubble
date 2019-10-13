@@ -1,16 +1,15 @@
 # `nrf52832-midi`
 
+Per Lindgren (per.lindgren@ltu.se)
+
 BLE MIDI to be.
 
-Debugging over USART, set to /dev/tty/ACM* (jlink/openocd VCP)
 
-TODO # GATT Service Descriptor.
-
-Resources
+## Resources
 
 BLE-MIDI-spec 1.0a (2015)
 
-## BLE Service and Characteristics Definitions
+### BLE Service and Characteristics Definitions
 
 The following service and characteristic are defined:
 • MIDI Service (UUID: 03B80E5A-EDE8-4B33-A751-6CE34EC4C700)
@@ -19,19 +18,19 @@ The following service and characteristic are defined:
 • read (encryption recommended, respond with no payload)
 • notify (encryption recommended)
 
-## Connection Interval
+### Connection Interval
 
 The BLE MIDI device must request a connection interval of 15 ms or less. A lower connection interval is preferred in most applications of MIDI. Connection should be established at the lowest connection interval that is currently supported on both the Central and the Peripheral.
 
-## Initial Connection and Pairing
+### Initial Connection and Pairing
 
 The Central will attempt to read the MIDI I/O characteristic of the Peripheral after establishing a connection with the accessory. The accessory shall respond to the initial MIDI I/O characteristic read with a packet that has no payload.
 
-## Maximum Transmission Unit Negotiation
+### Maximum Transmission Unit Negotiation
 
 The accessory must support MTU negotiation and must support the MTU Exchange command.
 
-## Packet Encoding
+### Packet Encoding
 
 Unlike legacy MIDI, BLE is a packet based protocol. Incoming messages cannot be instantly forwarded to the receiving party. Instead they must be buffered and transmitted each BLE connection interval, which is negotiated between the sender and receiver. To maintain precise inter-event timing, this protocol uses 13-bit millisecond-resolution timestamps to express the render time and event spacing of MIDI messages.
 
@@ -41,29 +40,36 @@ Unlike legacy MIDI, BLE is a packet based protocol. Incoming messages cannot be 
 
 ### log
 
-stty -F /dev/ttyXXX speed 1000000 && cat /dev/ttyXXX > log.txt
+``` shell
+$ stty -F /dev/ttyXXX speed 1000000 && cat /dev/ttyXXX > log.txt
+```
 
 ### bluez debug messages
 
-enable debugging by adding a -d after
+``` shell
+$ enable debugging by adding a -d after
+$ ExecStart=/usr/libexec/bluetooth/bluetoothd
+```
 
-ExecStart=/usr/libexec/bluetooth/bluetoothd
-
-in /usr/lib/systemd/system/bluetooth.service
+in `/usr/lib/systemd/system/bluetooth.service`
 
 Save, then:
 
+``` shell
 $ systemctl daemon-reload
 $ systemctl restart bluetooth
+```
 
-or alternatively
+or alternatively:
 
+``` shell
 $ journalctl --unit=bluetooth -f
+```
 
 ### Midi on arch
 
 ``` shell
-> aconnect -i
+$ aconnect -i
 client 0: 'System' [type=kernel]
     0 'Timer           '
     1 'Announce        '
@@ -75,7 +81,7 @@ client XXX: 'BLE MIDI' [type=user,pid=242118]
 ```
 
 ``` shell
-> aseqdump -p XXX
+$ aseqdump -p XXX
 138:0   Note on                 0, note 100, velocity 100
 138:0   Note off                0, note 100, velocity 100
 138:0   Note on                 0, note 100, velocity 100
@@ -88,10 +94,11 @@ client XXX: 'BLE MIDI' [type=user,pid=242118]
 ### programming
 
 ``` shell
-> cd demos
-> openocd -f openocd_jlink.cfg
+$ cd demos
+$ openocd -f openocd_jlink.cfg
 ```
 
 ``` shell
-> cargo run
+$ cd demos/nrf52832-midi
+$ cargo run
 ```
