@@ -26,8 +26,8 @@ use {
         gatt::BatteryServiceAttrs,
         l2cap::{BleChannelMap, L2CAPState},
         link::{
-            ad_structure::AdStructure, queue, AddressKind, DeviceAddress,
-            LinkLayer, Responder, MIN_PDU_BUF,
+            ad_structure::AdStructure, queue, AddressKind, DeviceAddress, LinkLayer, Responder,
+            MIN_PDU_BUF,
         },
         security::NoSecurity,
         time::{Duration, Timer},
@@ -136,11 +136,7 @@ const APP: () = {
         };
         let device_address = DeviceAddress::new(devaddr, devaddr_type);
 
-        let mut radio = BleRadio::new(
-            device.RADIO,
-            resources.BLE_TX_BUF,
-            resources.BLE_RX_BUF,
-        );
+        let mut radio = BleRadio::new(device.RADIO, resources.BLE_TX_BUF, resources.BLE_RX_BUF);
 
         let beacon = Beacon::new(
             device_address,
@@ -162,9 +158,7 @@ const APP: () = {
         let resp = Responder::new(
             tx,
             rx,
-            L2CAPState::new(BleChannelMap::with_attributes(
-                BatteryServiceAttrs::new(),
-            )),
+            L2CAPState::new(BleChannelMap::with_attributes(BatteryServiceAttrs::new())),
         );
 
         if !TEST_BEACON {
@@ -172,9 +166,7 @@ const APP: () = {
             let next_update = ll
                 .start_advertise(
                     Duration::from_millis(200),
-                    &[AdStructure::CompleteLocalName(
-                        "CONCVRRENS CERTA CELERIS",
-                    )],
+                    &[AdStructure::CompleteLocalName("CONCVRRENS CERTA CELERIS")],
                     &mut radio,
                     tx_cons,
                     rx_prod,
@@ -194,10 +186,9 @@ const APP: () = {
 
     #[interrupt(resources = [RADIO, BLE_LL])]
     fn RADIO() {
-        let next_update = resources.RADIO.recv_interrupt(
-            resources.BLE_LL.timer().now(),
-            &mut resources.BLE_LL,
-        );
+        let next_update = resources
+            .RADIO
+            .recv_interrupt(resources.BLE_LL.timer().now(), &mut resources.BLE_LL);
         resources.BLE_LL.timer().configure_interrupt(next_update);
     }
 

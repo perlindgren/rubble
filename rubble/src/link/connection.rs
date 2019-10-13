@@ -7,7 +7,8 @@ use {
         link::{
             advertising::ConnectRequestData,
             channel_map::ChannelMap,
-            data::{self, ConnectionUpdateData, ControlPdu, Header, Llid, Pdu},
+            data::{self, Header, Llid, Pdu},
+            llcp::{ConnectionUpdateData, ControlPdu},
             queue::{Consume, Consumer, Producer},
             Cmd, CompanyId, FeatureSet, NextUpdate, RadioCmd, SeqNum, Transmitter,
         },
@@ -19,7 +20,7 @@ use {
     core::{marker::PhantomData, num::Wrapping},
 };
 
-/// Connection state.
+/// Connection state and parameters.
 pub struct Connection<C: Config> {
     access_address: u32,
     crc_init: u32,
@@ -76,18 +77,12 @@ impl<C: Config> Connection<C> {
     /// * **`rx_end`**: Instant at which the `CONNECT_REQ` PDU was fully received.
     /// * **`tx`**: Channel for packets to transmit.
     /// * **`rx`**: Channel for received packets.
-    pub fn create(
+    pub(crate) fn create(
         lldata: &ConnectRequestData,
         rx_end: Instant,
         tx: C::PacketConsumer,
         rx: C::PacketProducer,
     ) -> (Self, Cmd) {
-        assert_eq!(
-            lldata.slave_latency(),
-            0,
-            "slave latency is not implemented"
-        );
-
         let mut this = Self {
             access_address: lldata.access_address(),
             crc_init: lldata.crc_init(),
@@ -123,6 +118,7 @@ impl<C: Config> Connection<C> {
                 access_address: this.access_address,
                 crc_init: this.crc_init,
             },
+            queued_work: false,
         };
 
         (this, cmd)
@@ -131,7 +127,7 @@ impl<C: Config> Connection<C> {
     /// Called by the `LinkLayer` when a data channel packet is received.
     ///
     /// Returns `Err(())` when the connection is ended (not necessarily due to an error condition).
-    pub fn process_data_packet(
+    pub(crate) fn process_data_packet(
         &mut self,
         rx_end: Instant,
         tx: &mut C::Transmitter,
@@ -158,7 +154,11 @@ impl<C: Config> Connection<C> {
             self.transmit_seq_num += SeqNum::ONE;
         }
 
+        // Whether we've already sent a response packet.
         let mut responded = false;
+        // Whether we've pushed more work into the RX queue.
+        let mut queued_work = false;
+
         if is_new {
             if is_empty {
                 // Always acknowledge empty packets, no need to process them
@@ -221,6 +221,7 @@ impl<C: Config> Connection<C> {
                 if result.is_ok() {
                     // Acknowledge the packet
                     self.next_expected_seq_num += SeqNum::ONE;
+                    queued_work = true;
                 } else {
                     trace!("NACK (no space in rx buffer)");
                 }
@@ -280,7 +281,8 @@ impl<C: Config> Connection<C> {
                     // Next conn event will the the first one with these parameters.
                     let result = self.apply_llcp_update(update, rx_end);
                     info!("LLCP patch applied: {:?} -> {:?}", update, result);
-                    if let Some(cmd) = result {
+                    if let Some(mut cmd) = result {
+                        cmd.queued_work = queued_work;
                         return Ok(cmd);
                     }
                 } else {
@@ -311,6 +313,7 @@ impl<C: Config> Connection<C> {
                 access_address: self.access_address,
                 crc_init: self.crc_init,
             },
+            queued_work,
         })
     }
 
@@ -319,7 +322,7 @@ impl<C: Config> Connection<C> {
     ///
     /// Returns `Err(())` when the connection is closed or lost. In that case, the Link-Layer will
     /// return to standby state.
-    pub fn timer_update(&mut self, timer: &mut C::Timer) -> Result<Cmd, ()> {
+    pub(crate) fn timer_update(&mut self, timer: &mut C::Timer) -> Result<Cmd, ()> {
         if self.received_packet {
             // No packet from master, skip this connection event and listen on the next channel
 
@@ -340,6 +343,7 @@ impl<C: Config> Connection<C> {
                     access_address: self.access_address,
                     crc_init: self.crc_init,
                 },
+                queued_work: false,
             })
         } else {
             // Master did not transmit the first packet during this transmit window.
@@ -482,7 +486,6 @@ impl<C: Config> Connection<C> {
     fn apply_llcp_update(&mut self, update: LlcpUpdate, rx_end: Instant) -> Option<Cmd> {
         match update {
             LlcpUpdate::ConnUpdate(data) => {
-                assert_eq!(data.latency(), 0, "slave latency not implemented");
                 let old_conn_interval = self.conn_interval;
                 self.conn_interval = data.interval();
 
@@ -499,6 +502,8 @@ impl<C: Config> Connection<C> {
                         access_address: self.access_address,
                         crc_init: self.crc_init,
                     },
+                    // This function never queues work, but the caller might change this to `true`
+                    queued_work: false,
                 })
             }
             LlcpUpdate::ChannelMap { map, .. } => {
@@ -506,6 +511,22 @@ impl<C: Config> Connection<C> {
                 None
             }
         }
+    }
+}
+
+// Public API
+impl<C: Config> Connection<C> {
+    /// Returns the configured interval between connection events.
+    ///
+    /// The connection event interval is arbitrated by the device in the Central role and heavily
+    /// influences the data transmission latency of the connection, which is important for some
+    /// applications.
+    ///
+    /// The Peripheral can request the Central to change the interval by sending an L2CAP signaling
+    /// message, or by using the Link Layer control procedure for requesting new connection
+    /// parameters.
+    pub fn connection_interval(&self) -> Duration {
+        self.conn_interval
     }
 }
 

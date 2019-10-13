@@ -21,7 +21,10 @@
 //! [`Channel`]: struct.Channel.html
 //! [l2c]: https://www.bluetooth.com/specifications/assigned-numbers/logical-link-control
 
+mod signaling;
+
 use {
+    self::signaling::SignalingState,
     crate::{
         att::{self, AttributeProvider, AttributeServer, NoAttributes},
         bytes::*,
@@ -225,6 +228,7 @@ impl<'a, P: ?Sized> ChannelData<'a, P> {
 /// * `0x0006`: LE Security Manager protocol.
 pub struct BleChannelMap<A: AttributeProvider, S: SecurityLevel> {
     att: AttributeServer<A>,
+    signaling: SignalingState,
     sm: SecurityManager<S>,
 }
 
@@ -237,6 +241,7 @@ impl BleChannelMap<NoAttributes, NoSecurity> {
     pub fn empty() -> Self {
         Self {
             att: AttributeServer::new(NoAttributes),
+            signaling: SignalingState::new(),
             sm: SecurityManager::no_security(),
         }
     }
@@ -246,6 +251,7 @@ impl<A: AttributeProvider> BleChannelMap<A, NoSecurity> {
     pub fn with_attributes(att: A) -> Self {
         Self {
             att: AttributeServer::new(att),
+            signaling: SignalingState::new(),
             sm: SecurityManager::no_security(),
         }
     }
@@ -256,12 +262,9 @@ impl<A: AttributeProvider, S: SecurityLevel> ChannelMapper for BleChannelMap<A, 
 
     fn lookup(&mut self, channel: Channel) -> Option<ChannelData<'_, dyn ProtocolObj + '_>> {
         match channel {
-            Channel::ATT => Some(ChannelData::new_dyn(Channel::ATT, &mut self.att)),
-            Channel::LE_SECURITY_MANAGER => Some(ChannelData::new_dyn(
-                Channel::LE_SECURITY_MANAGER,
-                &mut self.sm,
-            )),
-            // FIXME implement the LE Signaling Channel
+            Channel::ATT => Some(ChannelData::new_dyn(channel, &mut self.att)),
+            Channel::LE_SIGNALING => Some(ChannelData::new_dyn(channel, &mut self.signaling)),
+            Channel::LE_SECURITY_MANAGER => Some(ChannelData::new_dyn(channel, &mut self.sm)),
             _ => None,
         }
     }
@@ -393,6 +396,10 @@ pub struct Sender<'a> {
 }
 
 impl<'a> Sender<'a> {
+    /// Creates a `Sender` from a `Producer`, ensuring that sufficient free space is available to
+    /// fit a PDU described by `chdata`.
+    ///
+    /// If there is not enough space in `tx`, returns `None`.
     fn new<T: ?Sized>(chdata: &ChannelData<'_, T>, tx: &'a mut dyn Producer) -> Option<Self> {
         let free = tx.free_space();
         let needed = chdata.pdu_size() + Header::SIZE;
@@ -547,6 +554,10 @@ impl<'a, M: ChannelMapper, P: Producer> L2CAPStateTx<'a, M, P> {
     /// This will reserve sufficient space in the outgoing PDU buffer to send any ATT PDU, and then
     /// return an `AttributeServerTx` instance that can be used to initiate an ATT-specific
     /// procedure.
+    ///
+    /// Returns `None` if there's not enough space in the TX packet queue to send an ATT PDU. If
+    /// that happens, calling this method again at a later time (after the Link-Layer had time to
+    /// transmit more packets) might succeed.
     pub fn att(&mut self) -> Option<att::AttributeServerTx<'_, M::AttributeProvider>> {
         let att = self.l2cap.mapper.att();
         Sender::new(&att, self.tx).map(move |sender| att.into_protocol().with_sender(sender))

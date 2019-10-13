@@ -126,11 +126,13 @@ pub mod data;
 mod device_address;
 mod features;
 pub mod filter;
+pub mod llcp;
 pub mod queue;
 mod responder;
 mod seq_num;
 
 pub use self::comp_id::*;
+pub use self::connection::Connection;
 pub use self::device_address::*;
 pub use self::features::*;
 pub use self::responder::*;
@@ -139,7 +141,6 @@ use {
     self::{
         ad_structure::AdStructure,
         advertising::{Pdu, PduBuf},
-        connection::Connection,
         seq_num::SeqNum,
     },
     crate::{
@@ -288,7 +289,7 @@ impl<C: Config> LinkLayer<C> {
             channel: AdvertisingChannel::first(),
             data_queues: Some((tx, rx)),
         };
-        Ok(self.update(transmitter).next_update)
+        Ok(self.update_timer(transmitter).next_update)
     }
 
     /// Process an incoming packet from an advertising channel.
@@ -354,12 +355,13 @@ impl<C: Config> LinkLayer<C> {
 
         match self.state {
             State::Standby => unreachable!("standby, can't receive packets"),
-            State::Connection { .. } => unimplemented!(),
+            State::Connection { .. } => unreachable!("process_adv_packet called while connected"),
             State::Advertising { channel, .. } => {
                 Cmd {
                     radio: RadioCmd::ListenAdvertising { channel },
                     // no change
                     next_update: NextUpdate::Keep,
+                    queued_work: false,
                 }
             }
         }
@@ -383,6 +385,8 @@ impl<C: Config> LinkLayer<C> {
                     Cmd {
                         next_update: NextUpdate::Disable,
                         radio: RadioCmd::Off,
+                        // FIXME(#70) this might need to be changed to `true`
+                        queued_work: false,
                     }
                 }
             }
@@ -391,16 +395,14 @@ impl<C: Config> LinkLayer<C> {
         }
     }
 
-    /// Update the Link-Layer state.
+    /// Update the Link-Layer state after the timer expires.
     ///
-    /// This should be called in regular intervals, independent of whether packets were received and
-    /// processed.
+    /// This should be called whenever the timer set by the last returned `Cmd` has expired.
     ///
     /// # Parameters
     ///
     /// * `tx`: A `Transmitter` for sending packets.
-    /// * `elapsed`: Time since the last `update` call or creation of this `LinkLayer`.
-    pub fn update(&mut self, tx: &mut C::Transmitter) -> Cmd {
+    pub fn update_timer(&mut self, tx: &mut C::Transmitter) -> Cmd {
         match &mut self.state {
             State::Advertising {
                 next_adv,
@@ -423,6 +425,7 @@ impl<C: Config> LinkLayer<C> {
                 Cmd {
                     radio: RadioCmd::ListenAdvertising { channel: *channel },
                     next_update: NextUpdate::At(*next_adv),
+                    queued_work: false,
                 }
             }
             State::Connection(conn) => match conn.timer_update(&mut self.timer) {
@@ -433,6 +436,8 @@ impl<C: Config> LinkLayer<C> {
                     Cmd {
                         next_update: NextUpdate::Disable,
                         radio: RadioCmd::Off,
+                        // FIXME(#70) this might need to be changed to `true`
+                        queued_work: false,
                     }
                 }
             },
@@ -440,8 +445,29 @@ impl<C: Config> LinkLayer<C> {
         }
     }
 
+    /// Returns a reference to the connection state.
+    ///
+    /// If the Link Layer is not currently in a connection, returns `None`.
+    pub fn connection(&self) -> Option<&Connection<C>> {
+        if let State::Connection(conn) = &self.state {
+            Some(conn)
+        } else {
+            None
+        }
+    }
+
+    /// Returns whether the Link-Layer is currently broadcasting advertisement packets.
     pub fn is_advertising(&self) -> bool {
         if let State::Advertising { .. } = self.state {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns whether the Link-Layer is currently connected.
+    pub fn is_connected(&self) -> bool {
+        if let State::Connection { .. } = self.state {
             true
         } else {
             false
@@ -463,6 +489,13 @@ pub struct Cmd {
     /// If this is `None`, `update` doesn't need to be called because the Link-Layer is in Standby
     /// state.
     pub next_update: NextUpdate,
+
+    /// Whether the Link-Layer code has enqueued more work into the packet queue.
+    ///
+    /// If this is `true`, the caller needs to ensure that the queue is drained and processed by
+    /// calling the `Responder`. The apps idle loop might unconditionally do that, in which case
+    /// checking this flag is not necessary.
+    pub queued_work: bool,
 }
 
 /// Specifies when the Link Layer's `update` method should be called the next time.

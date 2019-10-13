@@ -121,11 +121,7 @@ const APP: () = {
         };
         let device_address = DeviceAddress::new(devaddr, devaddr_type);
 
-        let mut radio = BleRadio::new(
-            device.RADIO,
-            resources.BLE_TX_BUF,
-            resources.BLE_RX_BUF,
-        );
+        let mut radio = BleRadio::new(device.RADIO, resources.BLE_TX_BUF, resources.BLE_RX_BUF);
 
         let log_sink = logger::init(ble_timer.create_stamp_source());
 
@@ -139,9 +135,7 @@ const APP: () = {
         let resp = Responder::new(
             tx,
             rx,
-            L2CAPState::new(BleChannelMap::with_attributes(
-                MidiServiceAttrs::new(),
-            )),
+            L2CAPState::new(BleChannelMap::with_attributes(MidiServiceAttrs::new())),
         );
 
         // Send advertisement and set up regular interrupt
@@ -165,10 +159,9 @@ const APP: () = {
 
     #[interrupt(resources = [RADIO, BLE_LL])]
     fn RADIO() {
-        let next_update = resources.RADIO.recv_interrupt(
-            resources.BLE_LL.timer().now(),
-            &mut resources.BLE_LL,
-        );
+        let next_update = resources
+            .RADIO
+            .recv_interrupt(resources.BLE_LL.timer().now(), &mut resources.BLE_LL);
         resources.BLE_LL.timer().configure_interrupt(next_update);
     }
 
@@ -265,21 +258,14 @@ impl MidiPkg {
     }
 
     fn set(&mut self, time: u32, status: u8, md1: u8, md2: u8) {
-        self.0[0] =
-            ((1 << 7) | ((time >> 7) & 0b0011_1111)).try_into().unwrap();
+        self.0[0] = ((1 << 7) | ((time >> 7) & 0b0011_1111)).try_into().unwrap();
         self.0[1] = ((1 << 7) | (time & 0b0111_1111)).try_into().unwrap();
         self.0[2] = status;
         self.0[3] = md1;
         self.0[4] = md2;
     }
 
-    pub fn control_msg(
-        &mut self,
-        time: u32,
-        chan: u8,
-        ctrl_no: u8,
-        ctrl_val: u8,
-    ) {
+    pub fn control_msg(&mut self, time: u32, chan: u8, ctrl_no: u8, ctrl_val: u8) {
         self.set(
             time,
             0xb0 | (chan | 0x0f), // control message
