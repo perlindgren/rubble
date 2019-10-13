@@ -157,15 +157,27 @@ const APP: () = {
         LOG_SINK = log_sink;
     }
 
-    #[interrupt(resources = [RADIO, BLE_LL])]
+    #[interrupt(resources = [RADIO, BLE_LL], spawn = [ble_worker])]
     fn RADIO() {
-        let next_update = resources
+        if let Some(cmd) = resources
             .RADIO
-            .recv_interrupt(resources.BLE_LL.timer().now(), &mut resources.BLE_LL);
-        resources.BLE_LL.timer().configure_interrupt(next_update);
+            .recv_interrupt(resources.BLE_LL.timer().now(), &mut resources.BLE_LL)
+        {
+            resources.RADIO.configure_receiver(cmd.radio);
+            resources
+                .BLE_LL
+                .timer()
+                .configure_interrupt(cmd.next_update);
+
+            if cmd.queued_work {
+                // If there's any lower-priority work to be done, ensure that happens.
+                // If we fail to spawn the task, it's already scheduled.
+                spawn.ble_worker().ok();
+            }
+        }
     }
 
-    #[interrupt(resources = [RADIO, BLE_LL])]
+    #[interrupt(resources = [RADIO, BLE_LL],  spawn = [ble_worker])]
     fn TIMER0() {
         let timer = resources.BLE_LL.timer();
         if !timer.is_interrupt_pending() {
@@ -173,13 +185,19 @@ const APP: () = {
         }
         timer.clear_interrupt();
 
-        let cmd = resources.BLE_LL.update(&mut *resources.RADIO);
+        let cmd = resources.BLE_LL.update_timer(&mut *resources.RADIO);
         resources.RADIO.configure_receiver(cmd.radio);
 
         resources
             .BLE_LL
             .timer()
             .configure_interrupt(cmd.next_update);
+
+        if cmd.queued_work {
+            // If there's any lower-priority work to be done, ensure that happens.
+            // If we fail to spawn the task, it's already scheduled.
+            spawn.ble_worker().ok();
+        }
     }
 
     #[idle(resources = [LOG_SINK, SERIAL, BLE_R])]
@@ -199,52 +217,64 @@ const APP: () = {
                 }
             }
 
-            if resources.BLE_R.has_work() {
-                state = true;
-                resources.BLE_R.process_one().unwrap();
-            }
+            // if resources.BLE_R.has_work() {
+            //     state = true;
+            //     resources.BLE_R.process_one().unwrap();
+            // }
 
-            if state {
-                match resources.BLE_R.l2cap().att() {
-                    Some(mut att) => {
-                        if NOTE_DEMO {
-                            att.notify_raw(
-                                Handle::from_raw(0x0003),
-                                &MidiPkg::new(
-                                    time,
-                                    match on {
-                                        true => 0x90, // note on, channel 0
-                                        _ => 0x80,    // note off, channel 0
-                                    },
-                                    0x64,
-                                    0x64,
+            resources.BLE_R.lock(|ble_r| {
+                if state {
+                    match ble_r.l2cap().att() {
+                        Some(mut att) => {
+                            hprintln!("-- here --");
+                            if NOTE_DEMO {
+                                att.notify_raw(
+                                    Handle::from_raw(0x0003),
+                                    &MidiPkg::new(
+                                        time,
+                                        match on {
+                                            true => 0x90, // note on, channel 0
+                                            _ => 0x80,    // note off, channel 0
+                                        },
+                                        0x64,
+                                        0x64,
+                                    )
+                                    .0,
                                 )
-                                .0,
-                            )
-                            .unwrap();
-                        } else {
-                            att.notify_raw(
-                                Handle::from_raw(0x0003),
-                                &MidiPkg::new(
-                                    time,
-                                    0xb0, // contoller on channel 1
-                                    0x05, // breath controller
-                                    match on {
-                                        true => 0x7f, // note on, channel 0
-                                        _ => 0x00,    // note off, channel 0
-                                    },
+                            } else {
+                                att.notify_raw(
+                                    Handle::from_raw(0x0003),
+                                    &MidiPkg::new(
+                                        time,
+                                        0xb0, // contoller on channel 1
+                                        0x05, // breath controller
+                                        match on {
+                                            true => 0x7f, // note on, channel 0
+                                            _ => 0x00,    // note off, channel 0
+                                        },
+                                    )
+                                    .0,
                                 )
-                                .0,
-                            )
-                            .unwrap();
+                            }
+                            on = !on;
+                            time += 1; // this shoud be time in micro seconds
                         }
-                        on = !on;
-                        time += 1; // this shoud be time in micro seconds
+                        _ => (),
                     }
-                    _ => (),
                 }
-            }
+            });
         }
+    }
+    #[task(resources = [BLE_R])]
+    fn ble_worker() {
+        // Fully drain the packet queue
+        while resources.BLE_R.has_work() {
+            resources.BLE_R.process_one().unwrap();
+        }
+    }
+
+    extern "C" {
+        fn WDT();
     }
 };
 

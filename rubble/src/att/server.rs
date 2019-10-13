@@ -208,19 +208,19 @@ impl<A: AttributeProvider> AttributeServer<A> {
                 Ok(())
             }
 
-            AttPdu::WriteReq { .. } => {
-                // FIXME: ATT Writes are not yet supported, but we pretend they work so that some
-                // applications that only need CCCD writes work (eg. BLE MIDI).
-                warn!("NYI: ATT Write Req");
+            // AttPdu::WriteReq { .. } => {
+            //     // FIXME: ATT Writes are not yet supported, but we pretend they work so that some
+            //     // applications that only need CCCD writes work (eg. BLE MIDI).
+            //     warn!("NYI: ATT Write Req");
 
-                responder
-                    .send_with(|writer| -> Result<(), Error> {
-                        writer.write_u8(Opcode::WriteRsp.into())?;
-                        Ok(())
-                    })
-                    .unwrap();
-                Ok(())
-            }
+            //     responder
+            //         .send_with(|writer| -> Result<(), Error> {
+            //             writer.write_u8(Opcode::WriteRsp.into())?;
+            //             Ok(())
+            //         })
+            //         .unwrap();
+            //     Ok(())
+            // }
 
             // Responses are always invalid here
             AttPdu::ErrorRsp { .. }

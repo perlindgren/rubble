@@ -40,5 +40,5 @@ default = ["rubble/log", "log"]
 # Disable documentation to avoid spurious rustdoc warnings
 [[bin]]
 name = "nrf52832-midi"
-doc = false
+#doc = false
 test = false
