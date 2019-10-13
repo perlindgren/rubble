@@ -200,9 +200,8 @@ const APP: () = {
         }
     }
 
-    #[idle(resources = [LOG_SINK, SERIAL, BLE_R])]
+    #[idle(resources = [LOG_SINK, SERIAL, BLE_R, BLE_LL])]
     fn idle() -> ! {
-        let mut state = false;
         let mut on = true;
         let mut time = 0;
         // Drain the logging buffer through the serial connection
@@ -217,16 +216,10 @@ const APP: () = {
                 }
             }
 
-            // if resources.BLE_R.has_work() {
-            //     state = true;
-            //     resources.BLE_R.process_one().unwrap();
-            // }
-
-            resources.BLE_R.lock(|ble_r| {
-                if state {
+            if resources.BLE_LL.lock(|ble_ll| ble_ll.is_connected()) {
+                resources.BLE_R.lock(|ble_r| {
                     match ble_r.l2cap().att() {
-                        Some(mut att) => {
-                            hprintln!("-- here --");
+                        Some(att) => {
                             if NOTE_DEMO {
                                 att.notify_raw(
                                     Handle::from_raw(0x0003),
@@ -261,8 +254,8 @@ const APP: () = {
                         }
                         _ => (),
                     }
-                }
-            });
+                });
+            }
         }
     }
     #[task(resources = [BLE_R])]
