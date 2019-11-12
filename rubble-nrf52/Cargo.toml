@@ -11,9 +11,9 @@ edition = "2018"
 
 [dependencies]
 rubble = { path = "../rubble", version = "0.0.3", default-features = false }
-nrf52810-hal = { version = "0.8.1", optional = true }
+nrf52810-hal = { version = "0.8.1", default-features = false, optional = true }
 nrf52832-hal = { version = "0.8.1", default-features = false, optional = true }
-nrf52840-hal = { version = "0.8.1", optional = true }
+nrf52840-hal = { version = "0.8.1", default-features = false, optional = true }
 
 [features]
 52810 = ["nrf52810-hal"]
