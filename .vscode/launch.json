@@ -21,6 +21,36 @@
             "swoConfig": {
                 "source": "probe",
                 "enabled": true,
+                "swoFrequency": 6000000,
+                "cpuFrequency": 64000000,
+                "decoders": [
+                    {
+                        "port": 0,
+                        "label": "Output",
+                        "type": "console",
+                    }
+                ]
+            }
+        },
+        {
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "name": "usbd (debug) openocd",
+            "preLaunchTask": "cargo build",
+            "executable": "($cwd)../../target/thumbv7em-none-eabi/debug/nrf52840-usb",
+            "device": "nrf52",
+            "interface": "swd",
+            "postLaunchCommands": [
+                "monitor arm semihosting enable",
+            ],
+            "configFiles": [
+                "demos/openocd_jlink.cfg"
+            ],
+            "cwd": "${workspaceRoot}",
+            "swoConfig": {
+                "source": "probe",
+                "enabled": true,
                 "swoFrequency": 2000000,
                 "cpuFrequency": 64000000,
                 "decoders": [
