@@ -8,8 +8,13 @@ USB Support to be. (Also BLE MIDI as below)
 
 https://infocenter.nordicsemi.com/pdf/nRF52840_PS_v1.1.pdf 6.35
 
+## ITM tracing over jlinkgdb
 
+> JLinkGDBServer -if swd -port 50000 -swoport 50001 -telnetport 50002 -device nrf52
 
+Custom `itmdump` with tcp transport support.
+
+> itmdump -p localhost:50001 -F
 
 ## Resources
 
